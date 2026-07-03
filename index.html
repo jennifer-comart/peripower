@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>庫存管理系統 v32</title>
+<title>庫存管理系統 v38</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // 啟用 SheetJS 樣式支援（xlsx.full.min.js 內建支援 .s 屬性）
@@ -295,6 +295,10 @@ table.t tr:hover td{background:var(--bg2)}
     <div class="nav" id="nav-vendor-mgmt" onclick="showPage('vendor-mgmt')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 014-4h4a4 4 0 014 4v2"/><path d="M16 3.13a4 4 0 010 7.75"/><path d="M21 21v-2a4 4 0 00-3-3.87"/></svg>廠商管理
     </div>
+    <div class="nav" id="nav-prices" onclick="showPage('prices')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>售價設定
+      <span class="cnt" id="prices-cnt" style="display:none">0</span>
+    </div>
     <div class="nav" id="nav-groups" onclick="showPage('groups')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2"/><path d="M8 7V5a2 2 0 00-4 0v2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>料號群組
       <span class="cnt" id="groups-cnt" style="display:none">0</span>
@@ -521,6 +525,9 @@ table.t tr:hover td{background:var(--bg2)}
             <th style="width:70px">狀態</th>
             <th style="width:75px">呆滯日期</th>
             <th style="width:72px;text-align:right">在途請購</th>
+            <th style="width:70px;text-align:right">售價</th>
+            <th style="width:70px;text-align:right">成本價</th>
+            <th style="width:90px;text-align:right">庫存總值</th>
             <th style="width:82px">停產決策</th>
           </tr></thead>
           <tbody id="inv-tbody"></tbody>
@@ -607,6 +614,7 @@ table.t tr:hover td{background:var(--bg2)}
             <th style="width:65px">剩餘月數</th>
             <th style="width:65px;text-align:right">在途</th>
             <th style="width:80px">建議下單量</th>
+            <th style="width:90px;text-align:right">建議下單金額</th>
             <th style="width:95px">建議下單時間</th>
             <th style="width:70px">評估</th>
             <th style="width:72px">決策</th>
@@ -760,6 +768,53 @@ table.t tr:hover td{background:var(--bg2)}
           <div style="display:flex;gap:5px">
             <button id="vm-prev" onclick="vmPg(-1)">‹</button>
             <button id="vm-next" onclick="vmPg(1)">›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== PRICES ========== -->
+    <div class="page" id="page-prices">
+      <div style="font-size:17px;font-weight:500;margin-bottom:4px">售價／成本設定</div>
+      <div style="color:var(--text2);font-size:13px;margin-bottom:18px">設定每個料號的售價與成本價，售價用於庫存總值、補貨金額等計算；成本價可用於毛利分析，兩者獨立儲存互不影響。</div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-head">
+          <div class="card-title">搜尋料號</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="blu" onclick="autoFillPeripowerPrices()" style="font-size:11px">⚡ 匯入市售價</button>
+            <button class="blu" onclick="autoFillPeripowerCosts()" style="font-size:11px">⚡ 匯入實際成本</button>
+            <button class="red" onclick="clearAllPrices()" style="font-size:11px">清空售價</button>
+            <button class="red" onclick="clearAllCosts()" style="font-size:11px">清空成本</button>
+          </div>
+        </div>
+        <div style="padding:14px">
+          <input id="price-search" type="text" placeholder="輸入料號或品名搜尋…" oninput="renderPriceSearch()"
+            style="width:100%;height:32px;font-size:12px;padding:0 10px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);font-family:inherit">
+        </div>
+        <div style="padding:0 14px 12px;font-size:11px;color:var(--text3)">依料號直接比對 peripower / peri / NUFUN / HM Plus / SCOSCHE 全品項成本清單，共 447 筆市售價、436 筆實際成本，準確度高，可手動覆蓋。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">料號售價清單 <span id="price-list-count" style="font-size:11px;color:var(--text3);font-weight:400"></span></div>
+          <div style="font-size:11px;color:var(--text3)" id="price-set-count"></div>
+        </div>
+        <div class="tw"><table class="t">
+          <thead><tr>
+            <th style="width:110px">料件編號</th>
+            <th>品名</th>
+            <th style="width:120px;text-align:right">售價（元）</th>
+            <th style="width:120px;text-align:right">成本價（元）</th>
+            <th style="width:80px;text-align:right">毛利率</th>
+          </tr></thead>
+          <tbody id="price-tbody"></tbody>
+        </table></div>
+        <div class="pager">
+          <span id="price-info"></span>
+          <div style="display:flex;gap:5px">
+            <button id="price-prev" onclick="pricePg(-1)">‹</button>
+            <button id="price-next" onclick="pricePg(1)">›</button>
           </div>
         </div>
       </div>
@@ -941,6 +996,8 @@ let DB = {
   decisions: {},
   hidden: [],     // skus to hide from all views
   groups: {},     // id -> {name, skus[]}
+  prices: {},     // sku -> unit price
+  costs: {},      // sku -> unit cost (實際成本)
   revenue: {},    // sku -> {YYYY-MM: amount}
   lastUpdated: null,
   lastPeriod: null
@@ -973,6 +1030,8 @@ function loadDB() {
   if(!DB.hidden) DB.hidden = [];
   if(!DB.revenue) DB.revenue = {};
   if(!DB.groups) DB.groups = {};
+  if(!DB.prices) DB.prices = {};
+  if(!DB.costs) DB.costs = {};
 }
 function saveDB() {
   try { localStorage.setItem('inv_db_v2', JSON.stringify(DB)); } catch(e){ toast('儲存失敗（儲存空間不足）'); }
@@ -1382,7 +1441,9 @@ function getProductData(sku, avgMonths=6) {
   // 合計庫存 = 主倉 + 寄倉 + 在途請購單（對應 Excel (E6+G6)+在途）
   const total = main + consign + transit;
   const mrWithTransit = avg > 0 ? (main + transit) / avg : (main + transit > 0 ? 999 : 0);
-  return {sku, name:p.name, spec:p.spec, stale_date:p.stale_date||'', vendor, main, consign, total, avg, mr, transit, mrWithTransit};
+  const price = DB.prices[sku] || 0;
+  const cost = DB.costs[sku] || 0;
+  return {sku, name:p.name, spec:p.spec, stale_date:p.stale_date||'', vendor, main, consign, total, avg, mr, transit, mrWithTransit, price, cost};
 }
 
 function getStatus(mr, avg, total, main) {
@@ -1909,7 +1970,9 @@ function getGroupForecast(gid, avgMonths, horizonMonths) {
     stock = Math.round(stock - avg);
     return { month, stock, arrivals: 0, consumed: Math.round(avg) };
   });
-  return { sku: '【群組】', name: g.name, gid, skus: g.skus, avg, main, consign, transit, total, months, isGroup: true };
+  const pricedSkus = g.skus.filter(sku => (DB.prices[sku]||0) > 0);
+  const price = pricedSkus.length ? pricedSkus.reduce((s,sku)=>s+DB.prices[sku],0) / pricedSkus.length : 0;
+  return { sku: '【群組】', name: g.name, gid, skus: g.skus, avg, main, consign, transit, total, months, isGroup: true, price };
 }
 
 function renderForecast() {
@@ -1982,9 +2045,13 @@ function renderForecast() {
       const arrivalBadge = m.arrivals > 0
         ? `<div style="font-size:9px;color:var(--blue)">+${m.arrivals.toLocaleString()} 到貨</div>`
         : '';
+      const amtBadge = d.price > 0
+        ? `<div style="font-size:9px;color:var(--text3)">$${Math.round(m.stock*d.price).toLocaleString()}</div>`
+        : '';
       return `<td class="${cls}" style="text-align:right;padding:5px 8px">
         ${m.stock.toLocaleString()}
         ${arrivalBadge}
+        ${amtBadge}
       </td>`;
     }).join('');
 
@@ -2002,7 +2069,7 @@ function renderForecast() {
         ${hasSea ? `<div style="font-size:10px;color:var(--blue)">在途 +${d.transit.toLocaleString()}</div>` : ''}
         ${hasRisk ? '<div style="font-size:10px;color:var(--red)">⚠ 預估缺貨</div>' : ''}
       </td>
-      <td style="text-align:right;font-weight:500">${(d.main+d.transit).toLocaleString()}<div style="font-size:10px;color:var(--text3);font-weight:400">主${d.main.toLocaleString()}${d.transit>0?'＋在途'+d.transit.toLocaleString():''}</div></td>
+      <td style="text-align:right;font-weight:500">${(d.main+d.transit).toLocaleString()}<div style="font-size:10px;color:var(--text3);font-weight:400">主${d.main.toLocaleString()}${d.transit>0?'＋在途'+d.transit.toLocaleString():''}${d.price>0?'<br>$'+Math.round((d.main+d.transit)*d.price).toLocaleString():''}</div></td>
       <td style="text-align:right;color:var(--text3)">${d.avg > 0 ? d.avg.toFixed(1) : '—'}</td>
       ${monthCols}
     </tr>`;
@@ -2278,6 +2345,7 @@ function showPage(name) {
   if(name==='hidden-skus') renderHiddenSkus();
   if(name==='ranking') renderRanking();
   if(name==='groups') renderGroups();
+  if(name==='prices') renderPrices();
 }
 
 function updateTopStatus() {
@@ -2416,8 +2484,11 @@ function renderInvPage() {
       <td>${badge(d.mr,d.avg,d.total,d.main)}</td>
       <td style="font-size:11px;color:var(--text3)">${d.stale_date}</td>
       <td style="text-align:right;color:var(--blue);font-weight:500">${d.transit>0?'+'+d.transit.toLocaleString():'—'}</td>
+      <td style="text-align:right">${d.price>0?'$'+d.price.toLocaleString():'<span style="color:var(--text3)">—</span>'}</td>
+      <td style="text-align:right;color:var(--text3)">${d.cost>0?'$'+d.cost.toLocaleString():'—'}</td>
+      <td style="text-align:right;font-weight:500">${d.price>0?'$'+Math.round(d.total*d.price).toLocaleString():'<span style="color:var(--text3)">—</span>'}</td>
       <td>${decisionBadge(d.sku)}</td>
-    </tr>`;}).join(''):'<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--text3)">無符合條件的資料</td></tr>';
+    </tr>`;}).join(''):'<tr><td colspan="15" style="padding:30px;text-align:center;color:var(--text3)">無符合條件的資料</td></tr>';
   const total=data.length;
   document.getElementById('inv-info').textContent=`第${invP+1}/${Math.ceil(total/PS)||1}頁（${total}筆）`;
   document.getElementById('inv-prev').disabled=invP===0;
@@ -2676,6 +2747,7 @@ function renderReorder() {
       +'<td style="text-align:right;font-weight:500;color:'+(mr<2?'var(--red2)':'var(--amber2)')+'">'+mrStr(mr)+'</td>'
       +'<td style="text-align:right;color:var(--blue);font-size:12px">'+(g.transit>0?'+'+g.transit.toLocaleString():'—')+'</td>'
       +'<td style="text-align:right;font-weight:500">'+sugQty.toLocaleString()+'</td>'
+      +'<td style="text-align:right">'+(g.price>0?'$'+Math.round(sugQty*g.price).toLocaleString():'<span style="color:var(--text3)">—</span>')+'</td>'
       +'<td style="font-size:12px">'+orderTime+'</td>'
       +'<td>'+evalBadge+'</td>'
       +'<td><span style="font-size:10px;color:var(--text3)">群組</span></td>'
@@ -2697,11 +2769,12 @@ function renderReorder() {
       <td style="text-align:right;font-weight:500;color:${d.mr<2?'var(--red2)':'var(--amber2)'}">${d.disc?'—':mrStr(d.mr)}</td>
       <td style="text-align:right;color:var(--blue);font-size:12px">${d.transit>0?'+'+d.transit.toLocaleString():'—'}</td>
       <td style="text-align:right;font-weight:500">${d.disc?'—':sugQty.toLocaleString()}</td>
+      <td style="text-align:right">${(!d.disc&&d.price>0)?'$'+Math.round(sugQty*d.price).toLocaleString():'<span style="color:var(--text3)">—</span>'}</td>
       <td style="font-size:12px">${orderTime}</td>
       <td>${evalBadge}</td>
       <td><button class="ro-decision-btn" data-sku="${d.sku}" style="font-size:10px;padding:3px 8px">設定決策</button></td>
     </tr>`;
-  }).join(''):(grpReorderHtml||'<tr><td colspan="10" style="padding:30px;text-align:center;color:var(--text3)">無符合條件的品項</td></tr>');
+  }).join(''):(grpReorderHtml||'<tr><td colspan="11" style="padding:30px;text-align:center;color:var(--text3)">無符合條件的品項</td></tr>');
 
   // Decided panel
   const decided=getAllSkus().filter(s=>DB.decisions[s]);
@@ -3036,6 +3109,8 @@ function exportBackupJSON() {
     orders:    DB.orders,
     hidden:    DB.hidden,
     groups:    DB.groups,
+    prices:    DB.prices,
+    costs:     DB.costs,
     lastUpdated: DB.lastUpdated,
     lastPeriod:  DB.lastPeriod,
   };
@@ -3078,6 +3153,8 @@ function importBackupJSON(e) {
       DB.orders    = payload.orders    || {};
       DB.hidden    = payload.hidden    || [];
       DB.groups    = payload.groups    || {};
+      DB.prices    = payload.prices    || {};
+      DB.costs     = payload.costs     || {};
       DB.lastUpdated = payload.lastUpdated || null;
       DB.lastPeriod  = payload.lastPeriod  || null;
 
@@ -3088,6 +3165,8 @@ function importBackupJSON(e) {
       if(!DB.revenue)   DB.revenue   = {};
       if(!DB.hidden)    DB.hidden    = [];
       if(!DB.groups)    DB.groups    = {};
+      if(!DB.prices)    DB.prices    = {};
+      if(!DB.costs)     DB.costs     = {};
 
       saveDB();
       loadHistoricalData();  // 補回 HIST_DATA 的缺失欄位
@@ -3239,6 +3318,275 @@ function exportAll(){
   XLSX.utils.book_append_sheet(wb,ws4,'停產評估');
 
   saveWb(wb,`庫存完整報表_${dateStr()}.xlsx`);
+}
+
+// ============================================================
+// PERIPOWER PRICE AUTO-FILL（依料號直接比對市售價清單）
+// ============================================================
+
+// 由「peripower_全品項成本清單」彙整：料號 -> 市售價（NT$），共  筆
+const PERIPOWER_PRICE_MAP = {
+  "7PI8MT0001":168,"7PI8MT0002":168,"7PI8MT0003":168,"7PI8MT0004":168,"7PI8MT0005":99,"7PI8MT0009":299,"7NF8LG0001":249,"8UNG010001":499,
+  "7NF6LG0001":100,"7NF8MT0001":490,"7NF8MT0002":490,"7HT8LG0001":1980,"7HT8LG0002":1980,"7HT8LG0015":1980,"7HT8LG0016":1980,"7HT8LG0027":1980,
+  "7HT8LG0028":1980,"8HPB990003":1580,"8HPB990004":1580,"8HPB990016":1980,"8HPB990015":1980,"7HP8LG0026":1580,"7HP8LG0001":389,"7HP8LG0002":389,
+  "7HP8LG0025":209,"7HP6LG0022":688,"7HP8LG0023":178,"7HP8LG0022":399,"7HP8LG0005":399,"7HP8LG0006":399,"8HPB990006":259,"8HPB990007":259,
+  "8HPB990008":259,"7SH6MT0001":599,"7SH6MT0002":599,"7SH6MT0004":749,"7SH4AA0005":890,"7SH8MT0006":990,"7SH8MT0010":690,"7SH6MT0006":299,
+  "7SH8MT0018":990,"7SH8MT0020":990,"7SH8MT0034":899,"7SH8MT0039":899,"7SH8MT0040":949,"7SH8MT0041":949,"7SH8MT0042":999,"7SH8MT0043":349,
+  "7SH6MT0023":990,"7SH8MT0053":1999,"7SH8MT0055":1399,"7SH8MT0056":1399,"7SH8MT0060":999,"7SH8MT0061":1999,"7SH8MT0062":1999,"7SH8LG0002":1499,
+  "7SH8LG0001":699,"7SH8MT0065":899,"7SH8MT0064":1399,"7SH8MT0066":1399,"7SH8MT0063":1399,"7SH8MT0067":899,"7SH8MT0068":999,"7SH8MT0070":899,
+  "7SH8MT0069":499,"7SH8MT0072":1999,"7SH8MT0073":1999,"7SH8MT0074":2199,"7SH8MT0075":2199,"7SH8MT0071":1999,"7SH8MT0076":2799,"7SH8MT0077":999,
+  "7SH8MT0078":999,"7SH8MT0079":899,"7SH8MT0080":999,"7SH8MT0081":999,"7SH8MT0082":899,"7SH8MT0005":1290,"7SH8MT0009":990,"7SH8MT0011":990,
+  "7SH4AA0001":349,"7SH0MT0001":480,"7SH0MT0002":480,"7SH0MT0003":480,"7SH0MT0004":480,"7SH8MT0014":900,"7SH8MT0017":990,"7SH8MT0019":990,
+  "7SH8MT0021":1290,"7SH8MT0022":1290,"7SH8MT0023":1290,"7SH8MT0024":1290,"7SH6MT0019":399,"7SH6MT0020":399,"7SH6MT0021":399,"7SH8CD0002":590,
+  "7SH4AA0010":650,"7SH4AA0011":650,"7SH4AA0012":650,"7SH4AA0013":650,"7SH8CD0005":690,"7SH8CD0009":490,"7SH8CD0008":1190,"7SH8MM0010":650,
+  "7SH8CD0026":590,"7SH8CD0028":490,"7SH8CD0027":490,"7SH8CD0029":590,"7SH8CD0010":1880,"7SH8MM0013":1880,"7SH8XC0001":690,"7SH8XC0002":790,
+  "7SH8XC0003":490,"7SH8XC0004":590,"7SH8MM0009":1390,"7SH8CD0025":1280,"7SH8CD0024":1690,"7SH8CD0014":650,"7SH8CD0019":650,"7SH8CD0020":650,
+  "7SH8CD0021":650,"7SH8CD0007":590,"7SH8CD0022":769,"7SH8MT0016":2490,"7SH8MT0015":2990,"7SH6MT0003":749,"7SH6MT0005":499,"7SH4AA0003":349,
+  "7SH4AA0002":349,"8PPB040002":349,"8PPB060011":450,"8PPB060009":399,"8PPB060018":399,"7PP8MT0003":690,"7PP8MT0005":299,"8PPB060038":399,
+  "8PPB060039":490,"7PP6MT0045":499,"7PP6MT0047":299,"8PPB990043":699,"8PPB060041":499,"8PPB020016":299,"7PP8MT0026":299,"7PP8MT0033":299,
+  "8PPB060044":269,"8PPB060045":599,"8PPB060048":599,"8PPB010028":349,"8PPB010027":349,"8PPB010026":349,"8PPB020017":249,"8PPB020018":249,
+  "8PPB020019":249,"8PPB040014":449,"8PPB040013":579,"8PPB060010":499,"7PP6AA0001":649,"8PPB150004":450,"8PPB140001":199,"7PP8MT0024":199,
+  "7PP6MT0055":399,"8PPB060050":599,"8PPB060051":399,"8PPB060052":599,"8PPB060053":599,"8PPB990066":239,"7PP8MT0047":529,"7PP8MT0049":529,
+  "7PP8MT0048":479,"7PP8AA0003":249,"7PP8MT0044":199,"8PPB010029":399,"7PP8MT0045":399,"7PP8MT0046":299,"7PP8MT0053":299,"8PPB010030":299,
+  "8PPB990067":249,"8PPB040015":299,"7PP8MT0054":199,"8PPB040016":249,"8PPB140003":99,"8PPB140005":199,"8PPB140004":399,"7PP8MT0058":249,
+  "8PPB100001":199,"7PP8MT0066":429,"7PP8AA0002":499,"8PPB130001":1149,"8PPB130002":1299,"8PPB060056":899,"8PPB060054":249,"8PPB060055":249,
+  "8PPB130003":249,"8PPB130004":349,"7PP8MT0060":229,"8NFB990001":349,"8PPB060057":229,"7PP8MT0067":249,"7PP8MT0064":499,"7PP8MT0069":499,
+  "7PP8MT0071":599,"7PP8MT0077":699,"7PP8MT0078":699,"7PP8PS0011":529,"7PP8PS0010":699,"7PP6PS0017":599,"7PP8PS0027":949,"8PPB990068":1790,
+  "8PPB990069":599,"8PPB990070":599,"8PPB990071":599,"7PP8CD0066":199,"7PP8CD0067":299,"7PP8CD0068":499,"7PP8MT0017":299,"7PP8MT0019":299,
+  "7PP8MT0027":499,"7PP8MT0028":499,"7PP8MT0038":499,"7JD8LG0003":499,"7PP8MT0032":699,"7PP8MT0036":299,"7PP8MT0037":399,"7PP6MT0052":399,
+  "7PP6MT0053":499,"8PPB990065":399,"8PPV130001":299,"8PPV130002":299,"8PPV130003":399,"7PP8MT0052":599,"7JD8LG0002":599,"7PP8CD0075":359,
+  "7PP8CD0074":399,"7PP8MT0055":599,"7PP8MT0059":599,"8PPD130003":699,"7PP8MT0056":99,"7PP8MT0057":699,"8PPD990015":399,"8PPD990016":399,
+  "8PPD990017":399,"8PPD130001":599,"8PPD130002":599,"7PP8MT0061":599,"7PP8LG0065":399,"7PP8LG0066":599,"7PP6LG0010":209,"7PP8MT0062":499,
+  "7PP8MT0063":599,"7PP8MT0065":699,"7PP8MT0068":699,"7PP8MT0079":699,"7PP8MT0070":599,"7PP8MT0074":299,"7PP8MT0075":299,"7PP8MT0076":299,
+  "7PP8MT0073":599,"7PP8MT0080":469,"7PP8MT0081":469,"7PP8MT0082":469,"7PP8MT0083":469,"7PP8MT0084":469,"7PP8MT0085":469,"8PPB060042":399,
+  "7PP8PS0008":659,"7PP8AP0001":490,"7PP8AP0002":490,"7PP8AP0003":490,"7PP8MT0008":499,"7PP8MT0006":500,"7PP6MT0015":249,"7PP6MT0016":249,
+  "7PP6MT0017":249,"7PP8MT0007":999,"6MT0600569":199,"7PP8MT0015":299,"7PP8MT0016":399,"7PP8CD0049":399,"7PP6XC0004":299,"7PP6XC0005":299,
+  "7PP6XC0006":299,"7PP6XC0013":149,"7PP6XC0014":149,"7PP6XC0015":149,"7PP8PS0007":1290,"7PP8CD0045":1890,"8PPB060040":990,"7PP8PS0015":599,
+  "7PP6PS0007":699,"7PP8PS0001":399,"7PP8PS0003":399,"7PP8MT0011":699,"8PPA990001":350,"8PPA990002":350,"8PPA990003":350,"8PPA990004":350,
+  "7PP6PS0016":1380,"7PP6PS0015":1380,"8PPB990018":2380,"7PP6CD0002":399,"7PP6XC0001":399,"8PPB120008":990,"8PPB120007":990,"7PP6XC0002":399,
+  "7PP6XC0003":399,"7PP6XC0020":399,"7PC6LG0001":1680,"7PC6LG0002":1880,"8PPU060003":199,"8PPU060001":199,"8PPU060002":199,"7PP8MT0020":499,
+  "7PP8MT0021":499,"7PP6MT0044":599,"7PP8MT0031":499,"7PP8MT0023":239,"8PPB030003":790,"7PP8SP0019":79,"7PP8MT0002":199,"7PP8MT0004":399,
+  "8PPB010023":399,"8PPB010024":399,"7PP6MT0048":299,"7PP8MT0010":699,"8PPB150002":790,"8PPB070006":1250,"8PPB030001":599,"8PPB060014":490,
+  "8PPB010010":690,"8PPB010011":690,"8PPB060015":249,"8PPB010009":199,"8PPB060017":699,"8PPB040006":399,"8PPB010003":299,"8PPB040001":199,
+  "7PP8MT0001":990,"7PP8MT0018":399,"7PP6XC0016":249,"7PP6XC0017":249,"7PP6XC0018":249,"7PP6XC0019":199,"8PPB990010":790,"8PPB990012":790,
+  "8PPB990011":790,"8PPB990017":790,"8PPH120002":349,"8PPH120001":349,"8PPH120003":349,"8PPU990005":490,"8PPU990006":490,"8PPU990007":490,
+  "7PP6SP0014":490,"7PP6SP0015":490,"7PP6SP0016":490,"7PP6SP0017":490,"7PP6QT0012":299,"7PP6QT0013":299,"7PP6QT0014":299,"7PP6SP0009":490,
+  "7PP6SP0010":490,"7PP6SP0011":490,"7PP6SP0002":490,"7PP6PT0109":490,"7PP6PT0110":490,"7PP6PT0111":490,"7PP6PT0016":790,"7PP6PT0017":790,
+  "7PP6PT0018":790,"7PP6PT0019":790,"7PP8SP0002":79,"7PP8SP0004":790,"7PP8PS0009":799,"8PPB060037":299,"8PPB010001":299,"7PP8MT0009":699,
+  "8PPB990053":299,"8PPB990055":299,"8PPB990057":299,"8PPB990054":299,"8PPB990056":299,"8PPB990058":299,"8PPB990059":299,"8PPB990061":299,
+  "8PPB990063":299,"8PPB990060":299,"8PPB990062":299,"8PPB990064":299,"8PPB990048":199,"8PPB990049":199,"8PPB990050":199,"8PPB990052":299,
+  "8PPB990045":199,"8PPB990046":199,"8PPB990047":199,"8PPB990051":199,"8PPV010001":450,"8PPB060047":599,"7PP6MT0056":449,"7PP6MT0057":449,
+  "7PP8CD0069":699,"7PP8CD0048":399,"7PP8PS0006":999,"7PP8PS0005":999,"7PP8CD0046":1290,"8PPB990044":239,"7PP6PS0014":499,"8PPB060043":699,
+  "7PP6MT0054":499,"7PP8PT0053":599,"7PP8CD00767PP6CD0005":399,"7PP8CD00777PP6CD0006":399,"7PP8CD00787PP6CD0007":399,"7PP6PS0018":699,"7PP8LG0026":2899,"7PP8LG0023":3899,
+  "7PP8LG0024":239,"7PP8LG0044":1699,"7PP8LG0045":1699,"7PP8LG0062":1899,"7PP8LG0027":699,"7PP8LG0039":329,"7PP8LG0040":299,"7PP8LG0030":699,
+  "7PP8LG0041":329,"7PP8LG0049":899,"7PP8LG0050":1249,"7PP8LG0047":2799,"7PP8LG0055":399,"7PP8LG0048":599,"7PP8LG0022":399,"7PP8LG0038":329,
+  "7PP8LG0032":899,"7PP8LG0031":899,"7PP8LG0033":4399,"7PP8LG0028":4399,"7PP8LG0042":2799,"7PP8LG0043":2799,"7PP8LG0058":399,"7PP8LG0059":399,
+  "7PP8LG0052":149,"7PP8LG0064":149,"7PP8LG0046":739,"7PP8LG0037":999,"7PP8LG0036":999,"7PP8LG0034":499,"7PP8LG0025":499
+};
+
+const PERIPOWER_COST_MAP = {
+  "7PI8MT0001":57.13,"7PI8MT0002":57.13,"7PI8MT0003":57.13,"7PI8MT0004":57.13,"7PI8MT0005":33,"7PI8MT0009":45,"7NF6MT0001":78,"7NF6MT0002":71.94,
+  "7NF6MT0003":73.82,"7NF6MT0004":92,"7NF6MT0005":90,"8NFB010001":181.99,"7NF8MT0003":47,"7NF8LG0001":81.03,"8UNG010001":125.03,"7NF6LG0001":53.54,
+  "7NF8MT0001":278,"7NF8MT0002":278,"7HT8LG0001":759,"7HT8LG0002":759,"7HT8LG0015":899,"7HT8LG0016":899,"7HT8LG0027":901,"7HT8LG0028":901,
+  "8HPB990001":516,"8HPB990002":540,"8HPB990003":680,"8HPB990004":682,"7HT8LG0008":739,"7HT8LG0012":759,"7HT8LG0013":759,"7HT8LG0014":759,
+  "8HPB990016":977,"8HPB990015":977,"7HP8LG0026":758,"7HP8LG0001":140,"7HP8LG0002":142,"7HP8LG0004":154,"7HP8LG0005":154,"7HP8LG0006":154,
+  "8HPB990006":140,"8HPB990007":140,"8HPB990008":140,"7SH6MT0001":239.23,"7SH6MT0002":225.33,"7SH6MT0004":309.17,"7SH4AA0005":325.94,"7SH8MT0006":351.05,
+  "7SH8MT0010":233.34,"7SH6MT0006":107.45,"7SH6MT0007":429.39,"7SH6MT0008":387.07,"7SH8MT0012":552.44,"7SH8MT0018":408.88,"7SH8MT0020":389.16,"7SH8MT0039":173.2,
+  "7SH8MT0040":185.82,"7SH8MT0041":191.43,"7SH8MT0042":187.22,"7SH8MT0043":89.08,"7SH6MT0023":414.29,"7SH8MT0053":717.75,"7SH8MT0055":674.15,"7SH8MT0056":674.14,
+  "7SH8LG0001":367.13,"7SH8MT0077":464.75,"7SH8MT0078":491,"7SH8MT0080":463,"7SH8MT0005":427.03,"7SH8MT0009":382.95,"7SH8MT0011":572.33,"7SH4AA0001":139.87,
+  "7SH0MT0001":170.41,"7SH0MT0002":170.41,"7SH0MT0003":170.41,"7SH0MT0004":170.41,"7SH8MT0014":302.76,"7SH8MT0017":426.34,"7SH8MT0019":426.34,"7SH8MT0021":441.6,
+  "7SH8MT0022":441.64,"7SH8MT0023":549.48,"7SH8MT0024":551.15,"7SH6MT0019":184.51,"7SH6MT0020":157.36,"7SH6MT0021":182.2,"7SH8MT0034":317.62,"7SH6MT0009":414.39,
+  "7SH8CD0002":247.2,"7SH4AA0010":292.55,"7SH4AA0011":292.55,"7SH4AA0012":167,"7SH4AA0013":167,"7SH8CD0005":276.6,"7SH8CD0009":212.65,"7SH8CD0008":483.64,
+  "7SH8MM0010":210.63,"7SH8CD0026":212.47,"7SH8CD0028":153.68,"7SH8CD0027":152.77,"7SH8CD0029":210.63,"7SH8CD0010":755.1,"7SH8MM0013":734.3,"7SH8XC0001":280.13,
+  "7SH8XC0002":319.3,"7SH8XC0003":214.63,"7SH8XC0004":245.41,"7SH8MM0009":607.37,"7SH8CD0025":598.1,"7SH8CD0024":702,"7SH8CD0014":246.05,"7SH8CD0019":245.15,
+  "7SH8CD0020":246.05,"7SH8CD0021":243.77,"7SH8CD0006":396.72,"7SH8CD0007":185.6,"7SH8CD0022":274.03,"7SH8MT0016":1017.29,"7SH8MT0015":1285.25,"7SH6MT0003":275.14,
+  "7SH6MT0005":189.75,"7SH4AA0003":121.44,"7SH4AA0002":121.44,"8PPB040002":82.38,"8PPB060011":80.63,"8PPB060009":83.84,"8PPB060018":70.98,"7PP8MT0003":205,
+  "7PP8MT0005":85,"8PPB060038":88.63,"8PPB060039":88.1,"7PP6MT0045":115,"7PP6MT0047":78,"8PPB990043":126.18,"8PPB060041":99.12,"8PPB020016":70.1,
+  "7PP8MT0026":100,"7PP8MT0033":100,"8PPB060044":69.25,"8PPB060045":82.29,"8PPB060048":140.34,"8PPB010028":58.71,"8PPB010027":59.44,"8PPB010026":70.72,
+  "8PPB020017":55.74,"8PPB020018":56.34,"8PPB020019":55.14,"8PPB040014":83.9,"8PPB040013":105.57,"8PPB060010":88.3,"7PP6AA0001":213.16,"8PPB150004":115.22,
+  "8PPB140001":47.92,"7PP8MT0024":73.68,"7PP6MT0055":142,"8PPB060050":101.76,"8PPB060051":78.62,"8PPB060052":184,"8PPB060053":183,"8PPB990066":106,
+  "7PP8MT0047":208,"7PP8MT0049":197,"7PP8MT0048":155,"7PP8AA0003":54,"7PP8MT0044":50,"8PPB010029":120,"7PP8MT0045":145.24,"7PP8MT0046":101,
+  "7PP8MT0053":81,"8PPB010030":63,"8PPB990067":97,"8PPB040015":52,"7PP8MT0054":69,"8PPB040016":58,"8PPB140003":47,"8PPB140005":54,
+  "8PPB140004":65,"7PP8MT0058":65,"8PPB100001":55,"7PP8MT0066":140.32,"7PP8AA0002":129,"8PPB130001":245,"8PPB130002":265.25,"8PPB060056":247,
+  "8PPB060054":103,"8PPB060055":120.48,"8PPB130003":93,"8PPB130004":158,"7PP8MT0060":60,"8NFB990001":158,"7PP8MT0067":63.52,"7PP8MT0064":165,
+  "7PP8MT0069":165,"7PP8MT0071":239,"7PP8MT0077":266,"7PP8MT0078":266,"7PP8PS0011":171.08,"7PP8PS0010":192.49,"7PP6PS0017":170.25,"7PP8PS0027":310,
+  "7PP8CD0066":75.3,"7PP8CD0067":83.65,"7PP8CD0068":183.11,"7PP8MT0017":80,"7PP8MT0019":66,"7PP8MT0027":86,"7PP8MT0028":86,"7PP8MT0038":86,
+  "7JD8LG0003":86,"7PP8MT0032":235,"7PP8MT0036":81,"7PP8MT0037":114,"7PP6MT0052":74,"7PP6MT0053":175,"8PPB990065":102,"8PPV130001":88.13,
+  "8PPV130002":131.13,"8PPV130003":93.18,"7PP8MT0052":195,"7JD8LG0002":138,"7PP8CD0075":67,"7PP8CD0074":97,"7PP8MT0055":138,"7PP8MT0059":138,
+  "8PPD130003":185,"7PP8MT0056":35.25,"7PP8MT0057":256.5,"8PPD990015":90,"8PPD990016":90,"8PPD990017":90,"8PPD130001":185,"8PPD130002":185,
+  "7PP8MT0061":203,"7PP8LG0065":110,"7PP8LG0066":110,"7PP6LG0010":58,"7PP8MT0062":310,"7PP8MT0063":350,"7PP8MT0065":325,"7PP8MT0068":295,
+  "7PP8MT0079":225.2,"7PP8MT0070":213.5,"7PP8MT0074":106,"7PP8MT0075":106,"7PP8MT0076":106,"7PP8MT0073":170.5,"7PP8MT0080":144.7,"7PP8MT0081":144.7,
+  "7PP8MT0082":144.7,"7PP8MT0083":144.7,"7PP8MT0084":144.7,"7PP8MT0085":144.7,"8PPB060042":61.81,"8PPB010025":252.18,"7PP8PS0008":190,"7PP8AP0001":194,
+  "7PP8AP0002":194,"7PP8AP0003":194,"7PP8MT0008":185,"7PP8MT0006":169,"7PP6MT0015":69.96,"7PP6MT0016":65.37,"7PP6MT0017":69.96,"7PP8MT0007":295,
+  "6MT0600569":19.13,"7PP6MT0034":239.61,"7PP6MT0035":239.61,"7PP8MT0015":84.4,"7PP8MT0016":115,"7PP8CD0049":145.19,"7PP6XC0004":190.24,"7PP6XC0005":190.24,
+  "7PP6XC0006":190.24,"7PP6XC0013":72.45,"7PP6XC0014":72.45,"7PP6XC0015":72.46,"7PP8PS0007":540,"7PP8CD0045":600.75,"8PPB060040":323.05,"7PP8PS0015":266.12,
+  "7PP6PS0007":212.72,"7PP6PS0008":175.7,"7PP8PS0001":114.41,"7PP8PS0003":107.06,"7PP8PS0004":84.55,"7PP8MT0011":175,"8PPA990001":50.6,"8PPA990002":50.6,
+  "8PPA990003":50.6,"8PPA990004":50.6,"7PP6PS0016":455.3,"7PP6PS0015":455.3,"8PPU990001":412.7,"8PPU990002":412.7,"8PPU990003":412.7,"8PPU990004":412.7,
+  "8PPB990018":529.58,"7PP6XC0001":169.7,"8PPB050002":251.6,"8PPB120008":187.6,"8PPB120007":211.38,"7PP6PS0009":108.97,"7PP6XC0002":180.2,"7PP6XC0003":180.2,
+  "7PP6XC0020":180.22,"7PC6LG0001":476.2,"7PC6LG0002":523.8,"8PPU060003":65.99,"8PPU060001":65.99,"8PPU060002":64.84,"7PP8MT0020":133,"7PP6MT0044":146,
+  "7PP8MT0031":168,"7PP8MT0023":50,"8PPB030003":101.11,"7PP8SP0019":23,"7PP8MT0002":60,"7PP8MT0004":130,"8PPB010023":54.01,"8PPB010024":74.43,
+  "7PP6MT0048":65,"7PP8MT0010":152,"8PPB150002":191.22,"8PPB070006":50,"8PPB030001":50,"8PPB060014":94.58,"8PPB010010":108.78,"8PPB010011":164.19,
+  "8PPB060015":74.84,"8PPB010009":54.46,"8PPB060017":175.94,"8PPB040006":51.23,"8PPB010003":20,"8PPB040001":15,"7PP8MT0001":30,"7PP8MT0018":88,
+  "7PP6XC0016":90,"7PP6XC0017":86.5,"7PP6XC0018":77.45,"7PP6XC0019":112.75,"7PP6SP0014":119.94,"7PP6SP0015":116.74,"7PP6SP0016":119.94,"7PP6SP0017":119.94,
+  "7PP6QT0012":62.63,"7PP6QT0013":62.63,"7PP6QT0014":62.63,"7PP6SP0009":120,"7PP6SP0010":120,"7PP6SP0011":120,"7PP6SP0002":120,"7PP6PT0109":120,
+  "7PP6PT0110":120,"7PP6PT0111":120,"7PP6PT0016":211.52,"7PP6PT0017":211.52,"7PP6PT0018":211.52,"7PP6PT0019":211.52,"7PP8SP0004":30,"7PP8PS0009":232,
+  "8PPB060037":66.4,"8PPB010001":71.31,"7PP8MT0009":155,"8PPB990053":85.6,"8PPB990055":85.59,"8PPB990057":85.59,"8PPB990054":85.59,"8PPB990056":85.59,
+  "8PPB990058":85.59,"8PPB990059":85.63,"8PPB990061":85.58,"8PPB990063":85.58,"8PPB990060":85.58,"8PPB990062":85.58,"8PPB990064":85.54,"8PPB990048":26.1,
+  "8PPB990049":26.1,"8PPB990050":26.1,"8PPB990052":85.52,"8PPB990045":46.1,"8PPB990046":60,"8PPB990047":46.1,"8PPB990051":45.96,"8PPV010001":80.58,
+  "8PPB060047":126.6,"7PP6MT0056":93.18,"7PP6MT0057":93.18,"7PP8CD0069":161.11,"7PP8CD0048":179.25,"7PP8PS0006":293.73,"7PP8PS0005":293.73,"7PP8CD0046":407.58,
+  "8PPB990044":84.14,"7PP6PS0014":150,"8PPB060043":215.74,"7PP6MT0054":175,"7PP8PT0053":143,"7PP8CD00767PP6CD0005":94,"7PP8CD00777PP6CD0006":94,"7PP8CD00787PP6CD0007":94,
+  "7PP6PS0018":252.43,"7PP8LG0026":1424,"7PP8LG0023":1827,"7PP8LG0024":115,"7PP8LG0044":622,"7PP8LG0045":622,"7PP8LG0062":676,"7PP8LG0027":238,
+  "7PP8LG0039":150,"7PP8LG0040":71,"7PP8LG0030":210,"7PP8LG0041":157,"7PP8LG0049":397,"7PP8LG0050":568,"7PP8LG0047":1707,"7PP8LG0055":125,
+  "7PP8LG0048":325,"7PP8LG0022":207,"7PP8LG0038":150,"7PP8LG0032":344,"7PP8LG0031":318,"7PP8LG0033":2863,"7PP8LG0028":2863,"7PP8LG0042":1361,
+  "7PP8LG0043":1361,"7PP8LG0061":32,"7PP8LG0058":149,"7PP8LG0059":149,"7PP8LG0052":55,"7PP8LG0064":55,"7PP8LG0054":16,"7PP8LG0046":310,
+  "7PP8LG0037":498,"7PP8LG0036":372,"7PP8LG0034":204,"7PP8LG0025":158
+};
+
+function clearAllCosts() {
+  const cnt = Object.keys(DB.costs||{}).filter(s=>DB.costs[s]>0).length;
+  if(!cnt) { toast('目前沒有已設定的成本價'); return; }
+  if(!confirm(`確定要清空全部 ${cnt} 筆成本價設定？此操作無法復原。`)) return;
+  DB.costs = {};
+  saveDB();
+  renderPriceTbody();
+  toast('已清空全部成本價');
+}
+
+function autoFillPeripowerCosts() {
+  if(!confirm('將依料號比對「peripower 全品項成本清單」的實際成本，自動填入尚未設定成本價的料號。已手動設定過的不會被覆蓋，是否繼續？')) return;
+  let filled = 0, matched = 0;
+  for(const sku of getAllSkus()) {
+    const key = sku.toUpperCase();
+    if(!PERIPOWER_COST_MAP[key]) continue;
+    matched++;
+    if(DB.costs[sku] > 0) continue;
+    DB.costs[sku] = PERIPOWER_COST_MAP[key];
+    filled++;
+  }
+  saveDB();
+  renderPriceTbody();
+  toast(`已比對到 ${matched} 個料號，自動填入 ${filled} 筆成本價（已手動設定的保留原值）`);
+}
+
+function clearAllPrices() {
+  const cnt = Object.keys(DB.prices||{}).filter(s=>DB.prices[s]>0).length;
+  if(!cnt) { toast('目前沒有已設定的售價'); return; }
+  if(!confirm(`確定要清空全部 ${cnt} 筆售價設定？此操作無法復原。`)) return;
+  DB.prices = {};
+  saveDB();
+  updatePricesBadge();
+  renderPriceTbody();
+  toast('已清空全部售價');
+}
+
+function autoFillPeripowerPrices() {
+  if(!confirm('將依料號比對「peripower 全品項成本清單」的市售價，自動填入尚未設定售價的料號。已手動設定過的售價不會被覆蓋，是否繼續？')) return;
+  let filled = 0, matched = 0;
+  for(const sku of getAllSkus()) {
+    const key = sku.toUpperCase();
+    if(!PERIPOWER_PRICE_MAP[key]) continue;
+    matched++;
+    if(DB.prices[sku] > 0) continue; // 已手動設定過，不覆蓋
+    DB.prices[sku] = PERIPOWER_PRICE_MAP[key];
+    filled++;
+  }
+  saveDB();
+  updatePricesBadge();
+  renderPriceTbody();
+  toast(`已比對到 ${matched} 個料號，自動填入 ${filled} 筆市售價（已手動設定的保留原值）`);
+}
+
+// ============================================================
+// PRICE MANAGEMENT
+// ============================================================
+
+let priceP = 0;
+
+function pricePg(d) { priceP += d; renderPriceTbody(); }
+
+function updatePricesBadge() {
+  const cnt = Object.keys(DB.prices || {}).filter(s => DB.prices[s] > 0).length;
+  const el = document.getElementById('prices-cnt');
+  if(!el) return;
+  if(cnt > 0) { el.textContent = cnt; el.style.display = ''; }
+  else el.style.display = 'none';
+}
+
+function updateCostsBadge() {
+  // costs share the same nav badge as prices; just refresh count display if shown elsewhere
+}
+
+function setCostValue(sku, val) {
+  const v = parseFloat(val);
+  if(!DB.costs) DB.costs = {};
+  if(isNaN(v) || v <= 0) { delete DB.costs[sku]; }
+  else { DB.costs[sku] = v; }
+  saveDB();
+  updateCostsBadge();
+  renderPriceTbody();
+}
+
+function setPriceValue(sku, val) {
+  const v = parseFloat(val);
+  if(!DB.prices) DB.prices = {};
+  if(isNaN(v) || v <= 0) { delete DB.prices[sku]; }
+  else { DB.prices[sku] = v; }
+  saveDB();
+  updatePricesBadge();
+}
+
+function getPriceData() {
+  const hiddenSet = getHiddenSet();
+  const q = (document.getElementById('price-search')?.value || '').trim().toLowerCase();
+  return getAllSkus()
+    .filter(s => !hiddenSet.has(s))
+    .filter(s => {
+      if(!q) return true;
+      const name = (DB.products[s]?.name || '').toLowerCase();
+      return s.toLowerCase().includes(q) || name.includes(q);
+    })
+    .map(s => ({ sku: s, name: DB.products[s]?.name || '', price: DB.prices[s] || 0, cost: DB.costs[s] || 0 }));
+}
+
+function renderPrices() {
+  priceP = 0;
+  renderPriceTbody();
+}
+
+function renderPriceSearch() { priceP = 0; renderPriceTbody(); }
+
+function renderPriceTbody() {
+  const data = getPriceData();
+  const slice = data.slice(priceP*PS, (priceP+1)*PS);
+  const setCount = Object.keys(DB.prices||{}).filter(s=>DB.prices[s]>0).length;
+
+  document.getElementById('price-list-count').textContent = `（共 ${data.length} 筆）`;
+  document.getElementById('price-set-count').textContent = `已設定 ${setCount} 筆售價`;
+
+  document.getElementById('price-tbody').innerHTML = slice.length ? slice.map(d => {
+    const margin = (d.price>0 && d.cost>0) ? ((d.price-d.cost)/d.price*100) : null;
+    const marginColor = margin===null ? 'var(--text3)' : margin<20 ? 'var(--red2)' : margin<40 ? 'var(--amber2)' : 'var(--green2)';
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${d.sku}</td>
+      <td title="${esc(d.name)}">${esc(d.name)}</td>
+      <td style="text-align:right">
+        <input type="number" min="0" step="0.1" value="${d.price||''}" placeholder="未設定"
+          onchange="setPriceValue('${d.sku}', this.value)"
+          style="width:100px;height:28px;text-align:right;font-size:12px;padding:0 8px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);font-family:inherit">
+      </td>
+      <td style="text-align:right">
+        <input type="number" min="0" step="0.1" value="${d.cost||''}" placeholder="未設定"
+          onchange="setCostValue('${d.sku}', this.value)"
+          style="width:100px;height:28px;text-align:right;font-size:12px;padding:0 8px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);font-family:inherit">
+      </td>
+      <td style="text-align:right;font-weight:500;color:${marginColor}">${margin===null?'—':margin.toFixed(0)+'%'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--text3)">無符合條件的料號</td></tr>';
+
+  const total = data.length;
+  document.getElementById('price-info').textContent = `第${priceP+1}/${Math.ceil(total/PS)||1}頁（${total}筆）`;
+  document.getElementById('price-prev').disabled = priceP===0;
+  document.getElementById('price-next').disabled = (priceP+1)*PS>=total;
 }
 
 // ============================================================
@@ -3422,7 +3770,9 @@ function buildGroupReorderRows(safety, lead, avgM) {
     const total = main + consign + transit;
     const mr = avg > 0 ? main / avg : 99;
     if(avg <= 0 || mr >= 4) return null;
-    return { name: g.name, skus: g.skus, avg, main, consign, transit, total, mr };
+    const pricedSkus = g.skus.filter(sku => (DB.prices[sku]||0) > 0);
+    const price = pricedSkus.length ? pricedSkus.reduce((s,sku)=>s+DB.prices[sku],0) / pricedSkus.length : 0;
+    return { name: g.name, skus: g.skus, avg, main, consign, transit, total, mr, price };
   }).filter(Boolean);
 }
 
@@ -3693,6 +4043,7 @@ setTimeout(function(){
 }, 0);
 updateHiddenBadge();
 updateGroupsBadge();
+updatePricesBadge();
 updateTopStatus();
 updateNav();
 updateOrdBadge();
