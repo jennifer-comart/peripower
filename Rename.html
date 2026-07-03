@@ -158,6 +158,8 @@ input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59
 .deposit-badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #dcfce7; color: #166534; margin-left: 4px; }
 .editable-cell { cursor: pointer; border-bottom: 1px dashed #ccc; padding-bottom: 1px; }
 .editable-cell:hover { background: #f0f7ff; border-radius: 3px; }
+.sort-col { cursor: pointer; user-select: none; }
+.sort-col:hover { color: #333; }
 .dep-row { display: grid; grid-template-columns: 130px 120px 1fr 32px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f0ec; font-size: 14px; }
 .dep-row:last-child { border-bottom: none; }
 .dep-month-input { height: 30px; font-size: 13px; border: 1px solid #3b82f6; border-radius: 4px; padding: 0 8px; }
@@ -170,7 +172,13 @@ input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59
 <div class="container">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <h1 style="margin-bottom:0">客戶帳戶餘額追蹤</h1>
-    <span style="font-size:12px;color:#aaa;background:#eaeae6;padding:3px 10px;border-radius:20px;font-weight:500">v1.0</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-outline" style="font-size:12px;height:30px;padding:0 12px" onclick="backupJSON()">📥 備份</button>
+      <label class="btn btn-outline" style="font-size:12px;height:30px;padding:0 12px;cursor:pointer;display:flex;align-items:center">
+        📤 還原<input type="file" accept=".json" style="display:none" onchange="restoreJSON(event)">
+      </label>
+      <span style="font-size:12px;color:#aaa;background:#eaeae6;padding:3px 10px;border-radius:20px;font-weight:500">v1.0</span>
+    </div>
   </div>
 
   <div class="metrics">
@@ -241,9 +249,13 @@ input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59
       <button class="btn btn-outline" onclick="exportOrdersExcel()">匯出 Excel</button>
       <input type="text" id="order-search" placeholder="搜尋客戶或訂單編號" style="width:220px" oninput="renderOrders()">
     </div>
-    <div class="table-wrap">
+      <div class="table-wrap">
       <div class="t-head all-order-grid">
-        <span>客戶編號</span><span>訂單編號</span><span>日期</span><span>金額</span><span>備註</span><span></span>
+        <span>客戶編號</span>
+        <span class="sort-col" onclick="setOrderSort('oid')" title="點擊排序">訂單編號 <span id="sort-oid"></span></span>
+        <span class="sort-col" onclick="setOrderSort('date')" title="點擊排序">日期 <span id="sort-date">▼</span></span>
+        <span class="sort-col" onclick="setOrderSort('amount')" title="點擊排序">金額 <span id="sort-amount"></span></span>
+        <span>備註</span><span></span>
       </div>
       <div id="order-body"></div>
     </div>
@@ -263,7 +275,7 @@ input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59
       <div class="card">
         <div class="section-title" style="margin-bottom:12px">新增存款</div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          <div class="form-group"><label>客戶編號</label><input type="text" id="dep-cid" placeholder="例：TWC0386"></div>
+          <div class="form-group"><label>客戶編號</label><select id="dep-cid"><option value="">選擇客戶</option></select></div>
           <div class="form-group"><label>年月</label><input type="month" id="dep-month"></div>
           <div class="form-group"><label>存入金額</label><input type="number" id="dep-amount" placeholder="10000" min="0"></div>
           <button class="btn btn-primary" onclick="depositOne()">存入</button>
@@ -273,7 +285,7 @@ input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59
       <div class="card" style="grid-column:1/-1">
         <div class="section-title" style="margin-bottom:12px">新增訂單（扣款）</div>
         <div class="form-row">
-          <div class="form-group"><label>客戶編號</label><input type="text" id="o-cid" placeholder="TWC0386"></div>
+          <div class="form-group"><label>客戶編號</label><select id="o-cid"><option value="">選擇客戶</option></select></div>
           <div class="form-group"><label>訂單編號</label><input type="text" id="o-oid" placeholder="CS301-XXXXXXXXX"></div>
           <div class="form-group"><label>日期</label><input type="date" id="o-date"></div>
           <div class="form-group"><label>金額</label><input type="number" id="o-amount" placeholder="0" min="0"></div>
@@ -486,6 +498,25 @@ function toggleSub(id, row) {
   }
 }
 
+let orderSortKey = 'date';
+let orderSortDir = -1; // -1=降冪, 1=升冪
+
+function setOrderSort(key) {
+  if (orderSortKey === key) {
+    orderSortDir *= -1;
+  } else {
+    orderSortKey = key;
+    orderSortDir = key === 'date' ? -1 : 1;
+  }
+  ['oid','date','amount'].forEach(function(k) {
+    var el = document.getElementById('sort-' + k);
+    if (el) el.textContent = '';
+  });
+  var el = document.getElementById('sort-' + key);
+  if (el) el.textContent = orderSortDir === -1 ? '▼' : '▲';
+  renderOrders();
+}
+
 function renderOrders() {
   const q = (document.getElementById('order-search').value||'').toLowerCase();
   const body = document.getElementById('order-body');
@@ -497,6 +528,14 @@ function renderOrders() {
       }
     }
   }
+  rows.sort((a, b) => {
+    let va = a.o[orderSortKey] || '';
+    let vb = b.o[orderSortKey] || '';
+    if (orderSortKey === 'amount') { va = va || 0; vb = vb || 0; }
+    if (va < vb) return -1 * orderSortDir;
+    if (va > vb) return 1 * orderSortDir;
+    return 0;
+  });
   if (!rows.length) { body.innerHTML = '<div class="empty-state">無符合結果</div>'; return; }
   body.innerHTML = rows.map(r => `
     <div class="t-row all-order-grid">
@@ -517,10 +556,15 @@ function renderMetrics() {
 }
 
 function updateCidSelect() {
-  const sel = document.getElementById('monthly-cid');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">選擇客戶</option>' +
-    accounts.map(a => `<option value="${a.id}"${a.id===cur?' selected':''}>${a.id}</option>`).join('');
+  var opts = '<option value="">選擇客戶</option>' +
+    accounts.map(function(a) { return '<option value="' + a.id + '">' + a.id + '</option>'; }).join('');
+  ['monthly-cid','o-cid','dep-cid'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var cur = el.value;
+    el.innerHTML = opts;
+    if (cur) el.value = cur;
+  });
 }
 
 function render() { renderAccounts(); renderOrders(); renderMetrics(); updateCidSelect(); renderMonthly(); }
@@ -731,6 +775,42 @@ function exportOrdersExcel() {
   exportExcel(rows, '訂單明細', '訂單明細.xlsx');
 }
 
+function backupJSON() {
+  var now = new Date();
+  var ts = now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate()) + '_' + pad(now.getHours()) + pad(now.getMinutes());
+  var data = { version: 'v1.0', exportedAt: now.toISOString(), accounts: accounts };
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = '帳戶備份_' + ts + '.json'; a.click();
+  URL.revokeObjectURL(url);
+  toast('備份已下載：帳戶備份_' + ts + '.json');
+}
+
+function pad(n) { return String(n).padStart(2,'0'); }
+
+function restoreJSON(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      var restored = data.accounts || data;
+      if (!Array.isArray(restored)) throw new Error('格式錯誤');
+      if (!confirm('確定還原備份？目前資料將被覆蓋。\n備份時間：' + (data.exportedAt || '未知'))) return;
+      accounts = restored;
+      save();
+      render();
+      toast('還原成功！共 ' + accounts.length + ' 個客戶');
+    } catch(err) {
+      alert('還原失敗：檔案格式不正確\n' + err.message);
+    }
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
 function exportCSV() {
   let csv = '\uFEFF客戶編號,年月,訂單編號,日期,金額,備註,當月存入,月結餘,累積餘額\n';
   for (const a of accounts) {
@@ -759,27 +839,33 @@ fixAllMonths();
 render();
 </script>
 
+
 <script>
 (function() {
-  var importedOrders = [{"oid": "CS301-2408050032", "date": "2024-08-05", "amount": 320, "note": "0805 全家代寄"}, {"oid": "CS301-2408120001", "date": "2024-08-12", "amount": 590, "note": "0812 訂單"}, {"oid": "CS301-2408130020", "date": "2024-08-13", "amount": 260, "note": "0813 代寄 萊爾富"}, {"oid": "CS301-2408140002", "date": "2024-08-14", "amount": 1560, "note": "0814 已付款"}, {"oid": "CS301-2408260002", "date": "2024-08-26", "amount": 1545, "note": "0826 已付款"}, {"oid": "CS301-2409100006", "date": "2024-09-10", "amount": 195, "note": "0910 代寄 已付款"}, {"oid": "CS301-2409110002", "date": "2024-09-11", "amount": 845, "note": "0911 已匯款"}, {"oid": "CS301-2409160002", "date": "2024-09-16", "amount": 2019, "note": "0916 已付款"}, {"oid": "CS301-2409230002", "date": "2024-09-23", "amount": 1050, "note": "寄飛翔"}, {"oid": "CS301-2410040041", "date": "2024-10-04", "amount": 390, "note": "1004 已付款"}, {"oid": "CS301-2410150003", "date": "2024-10-15", "amount": 1605, "note": "1015 已付款"}, {"oid": "CS301-2410180015", "date": "2024-10-18", "amount": 780, "note": "1018 蝦皮代寄已付款"}, {"oid": "CS301-2410280025", "date": "2024-10-28", "amount": 2015, "note": "10/28 已付款"}, {"oid": "CS301-2411040001", "date": "2024-11-04", "amount": 1669, "note": "1104 已付款"}, {"oid": "CS301-2411250040", "date": "2024-11-25", "amount": 195, "note": "1125 代寄 7-11"}, {"oid": "CS301-2412030025", "date": "2024-12-03", "amount": 389, "note": "1203 代寄7-11"}, {"oid": "CS301-2412030026", "date": "2024-12-03", "amount": 195, "note": "1203 代寄蝦皮店到店"}, {"oid": "CS301-2412050041", "date": "2024-12-05", "amount": 2854, "note": "寄飛翔"}, {"oid": "CS301-2412170002", "date": "2024-12-17", "amount": 1710, "note": "寄飛翔"}, {"oid": "CS301-2412200018", "date": "2024-12-20", "amount": 2069, "note": "寄飛翔"}, {"oid": "CS301-2501030001", "date": "2025-01-03", "amount": 1818, "note": "0103 代寄蝦皮店到店"}, {"oid": "CS301-2501130002", "date": "2025-01-13", "amount": 2530, "note": "寄飛翔"}, {"oid": "CS301-2501210007", "date": "2025-01-21", "amount": 1730, "note": "寄飛翔"}, {"oid": "CS301-2502030015", "date": "2025-02-03", "amount": 1145, "note": "已匯款"}, {"oid": "CS301-2502030071", "date": "2025-02-03", "amount": 325, "note": "代寄 7-11"}, {"oid": "CS301-2502040026", "date": "2025-02-04", "amount": 830, "note": "萊爾富代寄"}, {"oid": "CS301-2502190002", "date": "2025-02-19", "amount": 1060, "note": "0219 已匯款"}, {"oid": "CS301-2503190032", "date": "2025-03-19", "amount": 3170, "note": "0319訂單已付款"}, {"oid": "CS301-2504070002", "date": "2025-04-07", "amount": 195, "note": "0407 代寄"}, {"oid": "CS301-2504140001", "date": "2025-04-14", "amount": 2020, "note": "0414 已付款"}, {"oid": "CS301-2504240001", "date": "2025-04-24", "amount": 780, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2504280016", "date": "2025-04-28", "amount": 1165, "note": "0428 已付款"}, {"oid": "CS301-2505020012", "date": "2025-05-02", "amount": 909, "note": "0502 代寄"}, {"oid": "CS301-2505080001", "date": "2025-05-08", "amount": 1035, "note": "0508 訂單已付錢"}, {"oid": "CS301-2505090017", "date": "2025-05-09", "amount": 195, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2505120002", "date": "2025-05-12", "amount": 460, "note": "0512 已付款"}, {"oid": "CS301-2505120040", "date": "2025-05-12", "amount": 390, "note": "0512 已付款"}, {"oid": "CS301-2505190021", "date": "2025-05-19", "amount": 909, "note": "0519 代寄"}, {"oid": "CS301-2505280018", "date": "2025-05-28", "amount": 260, "note": "0528 代寄"}, {"oid": "CS301-2506040027", "date": "2025-06-04", "amount": 585, "note": "已匯款"}, {"oid": "CS301-2506060002", "date": "2025-06-06", "amount": 220, "note": "0606 已付款"}, {"oid": "CS301-2506090013", "date": "2025-06-09", "amount": 1390, "note": "0609 已付款"}, {"oid": "CS301-2506130002", "date": "2025-06-13", "amount": 390, "note": "0613 代寄已付款"}, {"oid": "CS301-2506230001", "date": "2025-06-23", "amount": 1625, "note": "0623 已付款"}, {"oid": "CS301-2507010025", "date": "2025-07-01", "amount": 1405, "note": "0701 飛翔代寄"}, {"oid": "CS301-2507030002", "date": "2025-07-03", "amount": 345, "note": "0703 蝦皮代寄"}, {"oid": "CS301-2507040001", "date": "2025-07-04", "amount": 690, "note": "0704 蝦皮代寄"}, {"oid": "CS301-2507070011", "date": "2025-07-07", "amount": 1195, "note": "0707 已付款"}, {"oid": "CS301-2507090015", "date": "2025-07-09", "amount": 1954, "note": "0709  已付款"}, {"oid": "CS301-2507150007", "date": "2025-07-15", "amount": 390, "note": "已付款 代寄"}, {"oid": "CS301-2507280013", "date": "2025-07-28", "amount": 1745, "note": "0728已付款"}, {"oid": "CS301-2507310018", "date": "2025-07-31", "amount": 610, "note": "0731 已匯款"}, {"oid": "CS301-2508200016", "date": "2025-08-20", "amount": 1196, "note": "0820 已付款"}, {"oid": "CS301-2508270017", "date": "2025-08-27", "amount": 390, "note": "0827 已付款"}, {"oid": "CS301-2508290015", "date": "2025-08-29", "amount": 390, "note": "0829代寄 全家/7-11"}, {"oid": "CS301-2509010069", "date": "2025-09-01", "amount": 1425, "note": "寄飛翔"}, {"oid": "CS301-2509020030", "date": "2025-09-02", "amount": 520, "note": "0902 代寄7-11"}, {"oid": "CS301-2509110013", "date": "2025-09-11", "amount": 1555, "note": "0911"}, {"oid": "CS301-2509250023", "date": "2025-09-25", "amount": 2760, "note": "已付款"}, {"oid": "CS301-2509260021", "date": "2025-09-26", "amount": 310, "note": "已付款"}, {"oid": "CS301-2509300032", "date": "2025-09-30", "amount": 2793, "note": "0930 已付款"}, {"oid": "CS301-2510010031", "date": "2025-10-01", "amount": 1299, "note": "已付款"}, {"oid": "CS301-2510070001", "date": "2025-10-07", "amount": 380, "note": "1007 7-11代寄"}, {"oid": "CS301-2510160023", "date": "2025-10-16", "amount": 2370, "note": ""}, {"oid": "CS301-2510230025", "date": "2025-10-23", "amount": 1558, "note": "1023 已付款"}, {"oid": "CS301-2510270106", "date": "2025-10-27", "amount": 630, "note": "1027 已付款"}, {"oid": "CS301-2511120046", "date": "2025-11-12", "amount": 520, "note": "7-11 代寄"}, {"oid": "CS301-2511280026", "date": "2025-11-28", "amount": 260, "note": "1128 蝦皮店到店代寄"}, {"oid": "CS301-2511280028", "date": "2025-11-28", "amount": 3431, "note": "1128"}, {"oid": "CS301-2512050020", "date": "2025-12-05", "amount": 260, "note": "1205 代寄7-11"}, {"oid": "CS301-2512090039", "date": "2025-12-09", "amount": 320, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2512110030", "date": "2025-12-11", "amount": 1894, "note": "寄飛翔"}, {"oid": "CS301-2512160035", "date": "2025-12-16", "amount": 2467, "note": "1216 訂單"}, {"oid": "CS301-2512220004", "date": "2025-12-22", "amount": 1044, "note": "1222 訂單"}, {"oid": "CS301-2601020030", "date": "2026-01-02", "amount": 555, "note": "0102 代寄蝦皮"}, {"oid": "CS301-2601050065", "date": "2026-01-05", "amount": 1110, "note": "0105 訂單"}, {"oid": "CS301-2601050066", "date": "2026-01-05", "amount": 520, "note": "0105 代寄7-11"}, {"oid": "CS301-2601120023", "date": "2026-01-12", "amount": 390, "note": "0112 蝦皮代寄"}, {"oid": "CS301-2601120024", "date": "2026-01-12", "amount": 4240, "note": "0112 已付款"}, {"oid": "CS301-2601120065", "date": "2026-01-12", "amount": 390, "note": "0112訂單"}, {"oid": "CS301-2601150015", "date": "2026-01-15", "amount": 175, "note": "0115 訂單"}, {"oid": "CS301-2601190052", "date": "2026-01-19", "amount": 2043, "note": "0119 訂單"}, {"oid": "CS301-2601260008", "date": "2026-01-26", "amount": 1950, "note": "0126 訂單"}, {"oid": "CS301-2601280051", "date": "2026-01-28", "amount": 4658, "note": "寄飛翔"}, {"oid": "CS301-2601290012", "date": "2026-01-29", "amount": 584, "note": "0129 蝦皮代寄"}, {"oid": "CS301-2601300017", "date": "2026-01-30", "amount": 4532, "note": "0130 自取"}, {"oid": "CS301-2602090002", "date": "2026-02-09", "amount": 3058, "note": "0209 訂單"}, {"oid": "CS301-2602110010", "date": "2026-02-11", "amount": 1140, "note": "0211 自取"}, {"oid": "CS301-2602230116", "date": "2026-02-23", "amount": 1465, "note": "0223 自取"}, {"oid": "CS301-2603020006", "date": "2026-03-02", "amount": 4473, "note": "0302 自取"}, {"oid": "CS301-2603160010", "date": "2026-03-16", "amount": 4482, "note": "0316 訂單"}, {"oid": "CS301-2603180022", "date": "2026-03-18", "amount": 1204, "note": "0318 訂單"}, {"oid": "CS301-2603230043", "date": "2026-03-23", "amount": 2403, "note": "0323 訂單"}, {"oid": "CS301-2604070015", "date": "2026-04-07", "amount": 5056, "note": "0407 訂單"}, {"oid": "CS301-2604080018", "date": "2026-04-08", "amount": 195, "note": "0408 蝦皮代寄"}, {"oid": "CS301-2604170017", "date": "2026-04-17", "amount": 3620, "note": ""}, {"oid": "CS301-2604200043", "date": "2026-04-20", "amount": 1219, "note": "0420 訂單"}, {"oid": "CS301-2604270002", "date": "2026-04-27", "amount": 2237, "note": "0427 自取"}, {"oid": "CS301-2605040010", "date": "2026-05-04", "amount": 2095, "note": "0504 訂單"}, {"oid": "CS301-2605110056", "date": "2026-05-11", "amount": 230, "note": "7-11 代寄"}, {"oid": "CS301-2605210003", "date": "2026-05-21", "amount": 165, "note": "蝦皮代寄"}, {"oid": "CS301-2605250008", "date": "2026-05-25", "amount": 2050, "note": "0525 自取"}, {"oid": "CS301-2605270028", "date": "2026-05-27", "amount": 425, "note": "0527 蝦皮代寄"}, {"oid": "CS301-2606020003", "date": "2026-06-02", "amount": 2229, "note": "已付款"}, {"oid": "CS301-2606100015", "date": "2026-06-10", "amount": 1825, "note": "0610 訂單"}, {"oid": "CS301-2606150007", "date": "2026-06-15", "amount": 2365, "note": "0615 訂單"}, {"oid": "CS301-2508180023", "date": "2025-08-18", "amount": 0, "note": "0818 已付款,自取"}];
+  var importedOrders = [{"oid": "CS301-2606150007", "date": "2026-06-15", "amount": 2365, "note": "0615 訂單"}, {"oid": "CS301-2606100015", "date": "2026-06-10", "amount": 1825, "note": "0610 訂單"}, {"oid": "CS301-2606020003", "date": "2026-06-02", "amount": 2229, "note": "已付款"}, {"oid": "CS301-2605270028", "date": "2026-05-27", "amount": 425, "note": "0527 蝦皮代寄"}, {"oid": "CS301-2605250008", "date": "2026-05-25", "amount": 2050, "note": "0525 自取"}, {"oid": "CS301-2605210003", "date": "2026-05-21", "amount": 165, "note": "蝦皮代寄"}, {"oid": "CS301-2605110056", "date": "2026-05-11", "amount": 230, "note": "7-11 代寄"}, {"oid": "CS301-2605040010", "date": "2026-05-04", "amount": 2095, "note": "0504 訂單"}, {"oid": "CS301-2604270002", "date": "2026-04-27", "amount": 2237, "note": "0427 自取"}, {"oid": "CS301-2604200043", "date": "2026-04-20", "amount": 1219, "note": "0420 訂單"}, {"oid": "CS301-2604170017", "date": "2026-04-17", "amount": 3620, "note": ""}, {"oid": "CS301-2604080018", "date": "2026-04-08", "amount": 195, "note": "0408 蝦皮代寄"}, {"oid": "CS301-2604070015", "date": "2026-04-07", "amount": 5056, "note": "0407 訂單"}, {"oid": "CS301-2603230043", "date": "2026-03-23", "amount": 2403, "note": "0323 訂單"}, {"oid": "CS301-2603180022", "date": "2026-03-18", "amount": 1204, "note": "0318 訂單"}, {"oid": "CS301-2603160010", "date": "2026-03-16", "amount": 4482, "note": "0316 訂單"}, {"oid": "CS301-2603020006", "date": "2026-03-02", "amount": 4473, "note": "0302 自取"}, {"oid": "CS301-2602230116", "date": "2026-02-23", "amount": 1465, "note": "0223 自取"}, {"oid": "CS301-2602110010", "date": "2026-02-11", "amount": 1140, "note": "0211 自取"}, {"oid": "CS301-2602090002", "date": "2026-02-09", "amount": 3058, "note": "0209 訂單"}, {"oid": "CS301-2601300017", "date": "2026-01-30", "amount": 4532, "note": "0130 自取"}, {"oid": "CS301-2601290012", "date": "2026-01-29", "amount": 584, "note": "0129 蝦皮代寄"}, {"oid": "CS301-2601280051", "date": "2026-01-28", "amount": 4658, "note": "寄飛翔"}, {"oid": "CS301-2601260008", "date": "2026-01-26", "amount": 1950, "note": "0126 訂單"}, {"oid": "CS301-2601190052", "date": "2026-01-19", "amount": 2043, "note": "0119 訂單"}, {"oid": "CS301-2601150015", "date": "2026-01-15", "amount": 175, "note": "0115 訂單"}, {"oid": "CS301-2601120023", "date": "2026-01-12", "amount": 390, "note": "0112 蝦皮代寄"}, {"oid": "CS301-2601120024", "date": "2026-01-12", "amount": 4240, "note": "0112 已付款"}, {"oid": "CS301-2601120065", "date": "2026-01-12", "amount": 390, "note": "0112訂單"}, {"oid": "CS301-2601050065", "date": "2026-01-05", "amount": 1110, "note": "0105 訂單"}, {"oid": "CS301-2601050066", "date": "2026-01-05", "amount": 520, "note": "0105 代寄7-11"}, {"oid": "CS301-2601020030", "date": "2026-01-02", "amount": 555, "note": "0102 代寄蝦皮"}, {"oid": "CS301-2512220004", "date": "2025-12-22", "amount": 1044, "note": "1222 訂單"}, {"oid": "CS301-2512160035", "date": "2025-12-16", "amount": 2467, "note": "1216 訂單"}, {"oid": "CS301-2512110030", "date": "2025-12-11", "amount": 1894, "note": "寄飛翔"}, {"oid": "CS301-2512090039", "date": "2025-12-09", "amount": 320, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2512050020", "date": "2025-12-05", "amount": 260, "note": "1205 代寄7-11"}, {"oid": "CS301-2511280026", "date": "2025-11-28", "amount": 260, "note": "1128 蝦皮店到店代寄"}, {"oid": "CS301-2511280028", "date": "2025-11-28", "amount": 3431, "note": "1128"}, {"oid": "CS301-2511120046", "date": "2025-11-12", "amount": 520, "note": "7-11 代寄"}, {"oid": "CS301-2510270106", "date": "2025-10-27", "amount": 630, "note": "1027 已付款"}, {"oid": "CS301-2510230025", "date": "2025-10-23", "amount": 1558, "note": "1023 已付款"}, {"oid": "CS301-2510160023", "date": "2025-10-16", "amount": 2370, "note": ""}, {"oid": "CS301-2510070001", "date": "2025-10-07", "amount": 380, "note": "1007 7-11代寄"}, {"oid": "CS301-2510010031", "date": "2025-10-01", "amount": 1299, "note": "已付款"}, {"oid": "CS301-2509300032", "date": "2025-09-30", "amount": 2793, "note": "0930 已付款"}, {"oid": "CS301-2509260021", "date": "2025-09-26", "amount": 310, "note": "已付款"}, {"oid": "CS301-2509250023", "date": "2025-09-25", "amount": 2760, "note": "已付款"}, {"oid": "CS301-2509110013", "date": "2025-09-11", "amount": 1555, "note": "0911"}, {"oid": "CS301-2509020030", "date": "2025-09-02", "amount": 520, "note": "0902 代寄7-11"}, {"oid": "CS301-2509010069", "date": "2025-09-01", "amount": 1425, "note": "寄飛翔"}, {"oid": "CS301-2508290015", "date": "2025-08-29", "amount": 390, "note": "0829代寄 全家/7-11"}, {"oid": "CS301-2508270017", "date": "2025-08-27", "amount": 390, "note": "0827 已付款"}, {"oid": "CS301-2508200016", "date": "2025-08-20", "amount": 1196, "note": "0820 已付款"}, {"oid": "CS301-2508180023", "date": "2025-08-18", "amount": 2540, "note": "0818 已付款,自取"}, {"oid": "CS301-2507310018", "date": "2025-07-31", "amount": 610, "note": "0731 已匯款"}, {"oid": "CS301-2507280013", "date": "2025-07-28", "amount": 1745, "note": "0728已付款"}, {"oid": "CS301-2507150007", "date": "2025-07-15", "amount": 390, "note": "已付款 代寄"}, {"oid": "CS301-2507090015", "date": "2025-07-09", "amount": 1954, "note": "0709  已付款"}, {"oid": "CS301-2507070011", "date": "2025-07-07", "amount": 1195, "note": "0707 已付款"}, {"oid": "CS301-2507040001", "date": "2025-07-04", "amount": 690, "note": "0704 蝦皮代寄"}, {"oid": "CS301-2507030002", "date": "2025-07-03", "amount": 345, "note": "0703 蝦皮代寄"}, {"oid": "CS301-2507010025", "date": "2025-07-01", "amount": 1405, "note": "0701 飛翔代寄"}, {"oid": "CS301-2506230001", "date": "2025-06-23", "amount": 1625, "note": "0623 已付款"}, {"oid": "CS301-2506130002", "date": "2025-06-13", "amount": 390, "note": "0613 代寄已付款"}, {"oid": "CS301-2506090013", "date": "2025-06-09", "amount": 1390, "note": "0609 已付款"}, {"oid": "CS301-2506060002", "date": "2025-06-06", "amount": 220, "note": "0606 已付款"}, {"oid": "CS301-2506040027", "date": "2025-06-04", "amount": 585, "note": "已匯款"}, {"oid": "CS301-2505280018", "date": "2025-05-28", "amount": 260, "note": "0528 代寄"}, {"oid": "CS301-2505190021", "date": "2025-05-19", "amount": 909, "note": "0519 代寄"}, {"oid": "CS301-2505120002", "date": "2025-05-12", "amount": 460, "note": "0512 已付款"}, {"oid": "CS301-2505120040", "date": "2025-05-12", "amount": 390, "note": "0512 已付款"}, {"oid": "CS301-2505090017", "date": "2025-05-09", "amount": 195, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2505080001", "date": "2025-05-08", "amount": 1035, "note": "0508 訂單已付錢"}, {"oid": "CS301-2505020012", "date": "2025-05-02", "amount": 909, "note": "0502 代寄"}, {"oid": "CS301-2504280016", "date": "2025-04-28", "amount": 1165, "note": "0428 已付款"}, {"oid": "CS301-2504240001", "date": "2025-04-24", "amount": 780, "note": "代寄蝦皮店到店"}, {"oid": "CS301-2504140001", "date": "2025-04-14", "amount": 2020, "note": "0414 已付款"}, {"oid": "CS301-2504070002", "date": "2025-04-07", "amount": 195, "note": "0407 代寄"}, {"oid": "CS301-2503190032", "date": "2025-03-19", "amount": 3170, "note": "0319訂單已付款"}, {"oid": "CS301-2502190002", "date": "2025-02-19", "amount": 1060, "note": "0219 已匯款"}, {"oid": "CS301-2502040026", "date": "2025-02-04", "amount": 830, "note": "萊爾富代寄"}, {"oid": "CS301-2502030015", "date": "2025-02-03", "amount": 1145, "note": "已匯款"}, {"oid": "CS301-2502030071", "date": "2025-02-03", "amount": 325, "note": "代寄 7-11"}, {"oid": "CS301-2501210007", "date": "2025-01-21", "amount": 1730, "note": "寄飛翔"}, {"oid": "CS301-2501130002", "date": "2025-01-13", "amount": 2530, "note": "寄飛翔"}, {"oid": "CS301-2501030001", "date": "2025-01-03", "amount": 1818, "note": "0103 代寄蝦皮店到店"}, {"oid": "CS301-2412200018", "date": "2024-12-20", "amount": 2069, "note": "寄飛翔"}, {"oid": "CS301-2412170002", "date": "2024-12-17", "amount": 1710, "note": "寄飛翔"}, {"oid": "CS301-2412050041", "date": "2024-12-05", "amount": 2854, "note": "寄飛翔"}, {"oid": "CS301-2412030025", "date": "2024-12-03", "amount": 389, "note": "1203 代寄7-11"}, {"oid": "CS301-2412030026", "date": "2024-12-03", "amount": 195, "note": "1203 代寄蝦皮店到店"}, {"oid": "CS301-2411250040", "date": "2024-11-25", "amount": 195, "note": "1125 代寄 7-11"}, {"oid": "CS301-2411040001", "date": "2024-11-04", "amount": 1669, "note": "1104 已付款"}, {"oid": "CS301-2410280025", "date": "2024-10-28", "amount": 2015, "note": "10/28 已付款"}, {"oid": "CS301-2410180015", "date": "2024-10-18", "amount": 780, "note": "1018 蝦皮代寄已付款"}, {"oid": "CS301-2410150003", "date": "2024-10-15", "amount": 1605, "note": "1015 已付款"}, {"oid": "CS301-2410040041", "date": "2024-10-04", "amount": 390, "note": "1004 已付款"}, {"oid": "CS301-2409230002", "date": "2024-09-23", "amount": 1050, "note": "寄飛翔"}, {"oid": "CS301-2409160002", "date": "2024-09-16", "amount": 2019, "note": "0916 已付款"}, {"oid": "CS301-2409110002", "date": "2024-09-11", "amount": 845, "note": "0911 已匯款"}, {"oid": "CS301-2409100006", "date": "2024-09-10", "amount": 195, "note": "0910 代寄 已付款"}, {"oid": "CS301-2408260002", "date": "2024-08-26", "amount": 1545, "note": "0826 已付款"}, {"oid": "CS301-2408140002", "date": "2024-08-14", "amount": 1560, "note": "0814 已付款"}, {"oid": "CS301-2408130020", "date": "2024-08-13", "amount": 260, "note": "0813 代寄 萊爾富"}, {"oid": "CS301-2408120001", "date": "2024-08-12", "amount": 590, "note": "0812 訂單"}, {"oid": "CS301-2408050032", "date": "2024-08-05", "amount": 320, "note": "0805 全家代寄"}];
   var initDeposits = [{"month": "2024-10", "amount": 18739, "note": "推算（含8/9月）"}, {"month": "2024-12", "amount": 12427, "note": "推算"}, {"month": "2025-01", "amount": 12783, "note": "推算 + 01/03, 01/13 匯入"}, {"month": "2025-06", "amount": 10000, "note": "匯入 05/28"}, {"month": "2025-07", "amount": 10000, "note": "匯入 07/28"}, {"month": "2025-09", "amount": 10000, "note": "匯入 09/25"}, {"month": "2025-10", "amount": 10000, "note": "匯入 10/16"}, {"month": "2025-12", "amount": 10000, "note": "匯入 12/17"}, {"month": "2026-01", "amount": 10000, "note": "匯入 01/12"}, {"month": "2026-01", "amount": 10000, "note": "匯入 01/30"}, {"month": "2026-02", "amount": 10000, "note": "匯入 02/11"}, {"month": "2026-03", "amount": 10000, "note": "匯入 03/18"}, {"month": "2026-04", "amount": 10000, "note": "匯入 04/20"}, {"month": "2026-06", "amount": 10000, "note": "匯入 06/02"}];
   var stored = localStorage.getItem('acct_v4');
   var accounts = stored ? JSON.parse(stored) : [];
-  var acct = accounts.find(function(a) { return a.id === 'TWC0386'; });
-  if (!acct) { acct = { id: 'TWC0386', deposits: [], orders: [] }; accounts.push(acct); }
-  if (!acct.deposits) acct.deposits = [];
-  var orderMap = {};
-  acct.orders.forEach(function(o) { orderMap[o.oid] = o; });
-  importedOrders.forEach(function(o) {
-    if (orderMap[o.oid]) {
-      orderMap[o.oid].amount = o.amount;
-      orderMap[o.oid].note = o.note;
-      orderMap[o.oid].date = o.date;
-    } else {
-      acct.orders.push(o);
-    }
+
+  // 保留使用者手動編輯的備註
+  var userEditedNotes = {};
+  var existingAcct = accounts.find(function(a) { return a.id === 'TWC0386'; });
+  if (existingAcct) {
+    existingAcct.orders.forEach(function(o) { userEditedNotes[o.oid] = o.note; });
+    // 移除舊的TWC0386，完整重建
+    accounts = accounts.filter(function(a) { return a.id !== 'TWC0386'; });
+  }
+
+  var acct = { id: 'TWC0386', deposits: initDeposits.slice(), orders: [] };
+  acct.orders = importedOrders.map(function(o) {
+    return {
+      oid: o.oid,
+      date: o.date,
+      amount: o.amount,
+      note: userEditedNotes[o.oid] !== undefined ? userEditedNotes[o.oid] : o.note
+    };
   });
-  acct.deposits = initDeposits.slice();
+  accounts.push(acct);
   localStorage.setItem('acct_v4', JSON.stringify(accounts));
 })();
 </script>
